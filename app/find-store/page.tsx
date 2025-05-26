@@ -5,6 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, MapPin, Phone, Clock, Loader2, Search, X, Star, ShoppingBag } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import dynamic from "next/dynamic"
@@ -29,6 +30,16 @@ interface Store {
   placeId?: string
   photos?: any[]
   storeType?: string
+}
+
+
+
+interface SearchResult {
+  name: string
+  state: string
+  coordinates: { lat: number; lng: number }
+  isZip?: boolean
+  zipCode?: string
 }
 
 // Dynamically import the Map component with no SSR
@@ -66,7 +77,7 @@ const CITIES = [
 ]
 
 // Sample zip codes
-const ZIP_CODES = {
+const ZIP_CODES: Record<string, { city: string; state: string; coordinates: { lat: number; lng: number } }> = {
   "10001": { city: "New York", state: "NY", coordinates: { lat: 40.7501, lng: -73.9971 } },
   "90001": { city: "Los Angeles", state: "CA", coordinates: { lat: 33.9731, lng: -118.2459 } },
   "60601": { city: "Chicago", state: "IL", coordinates: { lat: 41.8855, lng: -87.6229 } },
@@ -82,7 +93,7 @@ export default function FindStore() {
   const [locationStatus, setLocationStatus] = useState("idle") // idle, loading, success, error
   const [locationError, setLocationError] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState([])
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showResults, setShowResults] = useState(false)
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER)
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM)
@@ -91,13 +102,15 @@ export default function FindStore() {
     coordinates: { lat: number; lng: number }
   } | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
-  const searchRef = useRef(null)
+  const searchRef = useRef<HTMLDivElement>(null)
+  
+
 
   // Function to find nearest store to user
-  const findNearestStore = () => {
+  const findNearestStore = (): Store | null => {
     if (!userLocation || stores.length === 0) return null
 
-    let nearestStore = null
+    let nearestStore: Store | null = null
     let shortestDistance = Number.POSITIVE_INFINITY
 
     stores.forEach((store) => {
@@ -167,8 +180,8 @@ export default function FindStore() {
 
   // Handle clicks outside the search results
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowResults(false)
       }
     }
@@ -180,7 +193,7 @@ export default function FindStore() {
   }, [searchRef])
 
   // Function to handle search input changes
-  const handleSearchChange = (e) => {
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value
     setSearchQuery(query)
 
@@ -216,7 +229,7 @@ export default function FindStore() {
   }
 
   // Function to handle search submission
-  const handleSearch = (e) => {
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
 
     // Check if input is a zip code
@@ -253,7 +266,7 @@ export default function FindStore() {
   }
 
   // Function to handle selecting a search result
-  const handleSelectResult = (result) => {
+  const handleSelectResult = (result: SearchResult) => {
     setSearchQuery(
       result.isZip ? `${result.name}, ${result.state} ${result.zipCode}` : `${result.name}, ${result.state}`,
     )
@@ -281,7 +294,7 @@ export default function FindStore() {
   }
 
   // Function to handle store selection
-  const selectStore = (store) => {
+  const selectStore = (store: Store) => {
     setActiveStore(store.id)
     setMapCenter(store.coordinates)
     setMapZoom(14)
@@ -289,12 +302,12 @@ export default function FindStore() {
   }
 
   // Function to handle stores found from Google Places API
-  const handleStoresFound = (foundStores) => {
+  const handleStoresFound = (foundStores: Store[]) => {
     setStores(foundStores)
   }
 
   // Helper function to calculate distance in miles
-  function calculateDistance(point1, point2) {
+  function calculateDistance(point1: { lat: number; lng: number }, point2: { lat: number; lng: number }) {
     if (!point1 || !point2) return 0
 
     const R = 3958.8 // Radius of the Earth in miles
@@ -319,7 +332,7 @@ export default function FindStore() {
   }
 
   // Helper function to convert degrees to radians
-  function deg2rad(deg) {
+  function deg2rad(deg: number) {
     return deg * (Math.PI / 180)
   }
 
@@ -327,6 +340,26 @@ export default function FindStore() {
   const handleMapClick = () => {
     // Close any open info windows
     setActiveStore(null)
+  }
+
+  // Helper function to convert store name to URL slug
+  const getStoreSlug = (storeName: string) => {
+    return storeName.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '') // Remove special characters except spaces
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .trim()
+  }
+
+  const getZipCodeFromLocation = () => {
+    // Try to extract zip code from searched location or use default
+    if (searchedLocation?.name.includes(' ')) {
+      const parts = searchedLocation.name.split(' ')
+      const lastPart = parts[parts.length - 1]
+      if (/^\d{5}$/.test(lastPart)) {
+        return lastPart
+      }
+    }
+    return '95616' // Default zip code
   }
 
   // Find the nearest store to the user
@@ -397,7 +430,7 @@ export default function FindStore() {
                   <p className="text-sm text-muted-foreground">
                     Your nearest grocery store is{" "}
                     <span className="font-medium text-foreground">{nearestStore.name}</span> (
-                    {calculateDistance(userLocation, nearestStore.coordinates).toFixed(1)} miles away)
+                    {userLocation ? calculateDistance(userLocation, nearestStore.coordinates).toFixed(1) : '0'} miles away)
                   </p>
                   <Button variant="link" className="p-0 h-auto text-sm" onClick={() => selectStore(nearestStore)}>
                     View Details
@@ -593,18 +626,17 @@ export default function FindStore() {
                           </a>
                         </Button>
                       </div>
-                      <Button
+                                            <Button
                         className="w-full bg-green-600 hover:bg-green-700 mt-2 flex items-center justify-center gap-2"
                         asChild
                       >
-                        <Link
-                          href={`/checkout/${encodeURIComponent(store.id)}?name=${encodeURIComponent(store.name)}&address=${encodeURIComponent(store.address)}`}
-                        >
+                        <Link href={`/store/${getStoreSlug(store.name)}?zip=${getZipCodeFromLocation()}`}>
                           <ShoppingBag className="h-4 w-4" />
                           Grab a Bag
                         </Link>
                       </Button>
                     </CardContent>
+
                   </Card>
                 ))}
               </div>
